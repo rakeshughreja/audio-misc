@@ -11,7 +11,7 @@
 #include <sys/poll.h>
 #include <stdint.h>
 
-int main()
+int main(int argc, char *argv[])
 {
 
 	snd_ctl_t *ctlp=NULL;
@@ -25,12 +25,30 @@ int main()
 	struct pollfd pfds;
 	unsigned short revents;
 	const char *elename;
+	char card_name[128];
+	char *ctlname;
 	snd_ctl_event_type_t event;
 
+	if (argc < 3) {
+		printf("usage: card_number, control_name\n");
+		return 0;
+	}
+	printf("card number = %s\n", argv[1]);
+	sprintf(card_name, "hw:CARD=%s", argv[1]);
+
+	printf("control name = %s\n", argv[2]);
+	ctlname = argv[2];
+
 	/* open the control device for a specific card */
-	ret = snd_ctl_open(&ctlp, "hw:CARD=1", SND_CTL_NONBLOCK);
+	ret = snd_ctl_open(&ctlp, card_name, SND_CTL_NONBLOCK);
 	if(ret < 0) {
 		printf("snd_ctl_open failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = snd_ctl_subscribe_events(ctlp, 1);
+	if(ret < 0) {
+		printf("snd_ctl_subscribe_events failed: %d\n", ret);
 		return ret;
 	}
 
@@ -47,7 +65,7 @@ int main()
 	}
 
 	/* start polling */
-	ret = poll(&pfds, 1, 1000);
+	ret = poll(&pfds, 1, 10000);
 	if (ret < 0)
 		return errno;
 
@@ -73,13 +91,13 @@ int main()
 
 	event = snd_ctl_event_get_type(ctlevent);
 	printf("Event type = %d\n", event);
-	if(SND_CTL_EVENT_ELEM == event) {
+	if(SND_CTL_EVENT_ELEM != event) {
 		printf("wrong event type = %d\n", event);
 		return -1;
 	}
  
 	elename = snd_ctl_event_elem_get_name(ctlevent);
-	if(strcmp(elename, "Capture Volume")) {
+	if(strcmp(elename, ctlname)) {
 		printf("not desired control = %s\n", elename);
 		return -1;
 	}
@@ -90,7 +108,7 @@ int main()
 	snd_ctl_elem_info_alloca(&eleinfo);
 
 	/* prepare which control element we want to read */
-	snd_ctl_elem_id_set_name(elemid, "Capture Volume");
+	snd_ctl_elem_id_set_name(elemid, ctlname);
 	snd_ctl_elem_id_set_interface(elemid, SND_CTL_ELEM_IFACE_MIXER);
 	snd_ctl_elem_id_set_index(elemid, 0);
 	snd_ctl_elem_value_set_id(elemval, elemid);
@@ -116,7 +134,7 @@ int main()
 	/* if there is a proper event then read the control value */
 	for(i=0; i < count; i++) {
 		value = snd_ctl_elem_value_get_integer(elemval, i);
-		printf("control value = %d\n", value);
+		printf("control value = 0x%x\n", value);
 	}
 
 	return ret;
